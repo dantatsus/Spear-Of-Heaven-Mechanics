@@ -22,6 +22,7 @@ public class PickUpSystem : MonoBehaviour
     private Vector3 desiredPosition;
     private Transform originalParent;
     private SpearSystem spearSystem;
+    private SpearSystem lastThrownSpear;
 
     private void Update()
     {
@@ -45,10 +46,26 @@ public class PickUpSystem : MonoBehaviour
             if (pickedObject != null)
                 DropObject();
         }
+
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            if (lastThrownSpear != null && !lastThrownSpear.IsBeingHeld())
+            {
+                lastThrownSpear.StartRecall();
+            }
+        }
     }
 
-    private void TryPickUp()
+    public void SetLastThrownSpear(SpearSystem spear)
     {
+        lastThrownSpear = spear;
+    }
+
+    public void TryPickUp()
+    {
+        // Eğer zaten bir obje tutuyorsak, yeni bir obje alamayız
+        if (pickedObject != null) return;
+
         Ray ray = new Ray(playerCamera.position, playerCamera.forward);
         if (Physics.Raycast(ray, out RaycastHit hit, pickupRange))
         {
@@ -60,7 +77,13 @@ public class PickUpSystem : MonoBehaviour
                 originalParent = pickedObject.transform.parent;
                 originalScale = pickedObject.transform.localScale;
 
+                if (spearSystem != null)
+                {
+                    spearSystem.SetBeingHeld(true);
+                }
+
                 pickedRigidbody.isKinematic = true;
+                pickedRigidbody.useGravity = false;
                 pickedRigidbody.interpolation = RigidbodyInterpolation.Interpolate;
                 pickedRigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
@@ -128,10 +151,18 @@ public class PickUpSystem : MonoBehaviour
         return false;
     }
 
-    private void DropObject()
+    public void DropObject()
     {
         if (pickedRigidbody != null)
         {
+            SpearSystem spear = pickedRigidbody.GetComponent<SpearSystem>();
+
+            // Eğer normal bırakma ise (fırlatma değilse) lastThrownSpear'ı sıfırla
+            if (spear != null && !spear.wasThrown)
+            {
+                lastThrownSpear = null;
+            }
+
             PrepareObjectForDrop();
             pickedRigidbody.AddForce(Vector3.up * dropUpwardForce, ForceMode.Impulse);
             ResetPickupState();
@@ -140,6 +171,11 @@ public class PickUpSystem : MonoBehaviour
 
     private void PrepareObjectForDrop()
     {
+        if (spearSystem != null)
+        {
+            spearSystem.SetBeingHeld(false);
+        }
+
         pickedRigidbody.isKinematic = false;
         pickedRigidbody.useGravity = true;
         pickedRigidbody.interpolation = RigidbodyInterpolation.Interpolate;
@@ -155,6 +191,39 @@ public class PickUpSystem : MonoBehaviour
         pickedObject = null;
         pickedRigidbody = null;
         lastValidPosition = Vector3.zero;
+    }
+
+    // Yeni fonksiyon - raycast kontrolü yapmadan direkt olarak objeyi alır
+    public void ForcePickup(GameObject objectToPickup)
+    {
+        // Eğer zaten bir obje tutuyorsak, yeni bir obje alamayız
+        if (pickedObject != null) return;
+
+        pickedObject = objectToPickup;
+        pickedRigidbody = pickedObject.GetComponent<Rigidbody>();
+        spearSystem = pickedObject.GetComponent<SpearSystem>();
+        originalParent = pickedObject.transform.parent;
+        originalScale = pickedObject.transform.localScale;
+
+        if (spearSystem != null)
+        {
+            spearSystem.SetBeingHeld(true);
+        }
+
+        pickedRigidbody.isKinematic = true;
+        pickedRigidbody.useGravity = false;
+        pickedRigidbody.interpolation = RigidbodyInterpolation.Interpolate;
+        pickedRigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        pickedObject.transform.SetParent(null);
+        pickedObject.layer = LayerMask.NameToLayer("Interactable");
+
+        lastValidPosition = GetDesiredPosition();
+
+        if (spearSystem == null)
+        {
+            pickedObject.transform.rotation = playerCamera.rotation;
+        }
     }
 
     private void OnDrawGizmosSelected()
